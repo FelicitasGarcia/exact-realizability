@@ -1,0 +1,17 @@
+HOA: v1
+name: "G(AP_TRANSITION & supported & good -> X AP_NOMINAL)"
+States: 2
+Start: 0
+AP: 4 "good" "supported" "AP_NOMINAL" "AP_TRANSITION"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels state-acc deterministic
+controllable-AP: 2 3
+--BODY--
+State: 0 {0}
+[!0 | !1 | !3] 0
+[0&1&3] 1
+State: 1 {0}
+[!0&2 | !1&2 | 2&!3] 0
+[0&1&2&3] 1
+--END--

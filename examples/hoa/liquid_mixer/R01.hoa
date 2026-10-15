@@ -1,0 +1,17 @@
+HOA: v1
+name: "G(start -> X(VALVE_0 & !VALVE_1 & !VALVE_2 & !MIXER))"
+States: 2
+Start: 0
+AP: 5 "start" "MIXER" "VALVE_0" "VALVE_1" "VALVE_2"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels state-acc deterministic
+controllable-AP: 1 2 3 4
+--BODY--
+State: 0 {0}
+[!0] 0
+[0] 1
+State: 1 {0}
+[!0&!1&2&!3&!4] 0
+[0&!1&2&!3&!4] 1
+--END--

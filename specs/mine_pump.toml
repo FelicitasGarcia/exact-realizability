@@ -1,0 +1,35 @@
+name = "Mine pump"
+# Inputs (environment) in lower case, outputs (controller) in upper case.
+
+[[entry]]
+id = "R1"
+kind = "requirement"
+ltl = 'G(highWater -> X PUMP)'
+cstr = ["PUMP"]
+description = "Pump on after high water"
+
+[[entry]]
+id = "R2"
+kind = "requirement"
+ltl = 'G(methane -> X !PUMP)'
+cstr = ["PUMP"]
+description = "Pump off after methane"
+
+[[entry]]
+id = "R3"
+kind = "requirement"
+ltl = 'G(lowWater -> X !PUMP)'
+cstr = ["PUMP"]
+description = "Pump off after low water"
+
+[[entry]]
+id = "D1"
+kind = "domain"
+ltl = 'G !(highWater & lowWater)'
+description = "The water cannot be high and low at the same time"
+
+[[entry]]
+id = "A1"
+kind = "assumption"
+ltl = 'G !methane'
+description = "Ventilation keeps methane away (can fail)"

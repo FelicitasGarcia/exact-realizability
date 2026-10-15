@@ -1,0 +1,12 @@
+HOA: v1
+name: "G((AP_TRANSITION | AP_NOMINAL | AP_STANDBY | AP_MANEUVER) & !(AP_TRANSITION & AP_NOMINAL) & !(AP_TRANSITION & AP_STANDBY) & !(AP_TRANSITION & AP_MANEUVER) & !(AP_NOMINAL & AP_STANDBY) & !(AP_NOMINAL & AP_MANEUVER) & !(AP_STANDBY & AP_MANEUVER))"
+States: 1
+Start: 0
+AP: 4 "AP_MANEUVER" "AP_NOMINAL" "AP_STANDBY" "AP_TRANSITION"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels state-acc deterministic
+--BODY--
+State: 0 {0}
+[!0&!1&!2&3 | !0&!1&2&!3 | !0&1&!2&!3 | 0&!1&!2&!3] 0
+--END--

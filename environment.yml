@@ -1,0 +1,13 @@
+# conda env create -f environment.yml && conda activate exactreal
+name: exactreal
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - spot
+  - jupyterlab
+  - nbconvert
+  - pytest
+  - pip
+  - pip:
+      - -e .

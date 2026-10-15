@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "exactreal"
+version = "0.1.0"
+description = "Exact and standard realizability of safety goals given as HOA automata"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = []   # Spot is optional and comes from conda-forge, see environment.yml
+
+[project.optional-dependencies]
+dev = ["pytest", "jupyterlab", "nbconvert"]
+
+[project.scripts]
+exactreal = "exactreal.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -1,0 +1,95 @@
+name = "Liquid mixer"
+# Based on the liquid mixer of NASA's FRET compositional realizability report (NASA/TM-2021-20210013008).
+# Inputs (environment events) in lower case, outputs (controller) in upper case.
+
+[[entry]]
+id = "R01"
+kind = "requirement"
+ltl = 'G(start -> X(VALVE_0 & !VALVE_1 & !VALVE_2 & !MIXER))'
+cstr = ["VALVE_0", "VALVE_1", "VALVE_2", "MIXER"]
+description = "On start, fill with liquid 0"
+
+[[entry]]
+id = "R02"
+kind = "requirement"
+ltl = 'G((level_1_reached & !stop) -> X(!VALVE_0 & VALVE_1 & !VALVE_2 & !MIXER))'
+cstr = ["VALVE_0", "VALVE_1", "VALVE_2", "MIXER"]
+description = "At level 1, switch to liquid 1"
+
+[[entry]]
+id = "R03"
+kind = "requirement"
+ltl = 'G((level_2_reached & !stop) -> X(!VALVE_0 & !VALVE_1 & !VALVE_2 & TIMER_60))'
+cstr = ["VALVE_0", "VALVE_1", "VALVE_2", "TIMER_60"]
+description = "At level 2, close all valves and start the 60 s timer"
+
+[[entry]]
+id = "R04"
+kind = "requirement"
+ltl = 'G((level_2_reached & !stop) -> X(MIXER W (timer60_ends | stop)))'
+cstr = ["MIXER"]
+description = "At level 2, stir until the 60 s timer ends or stop"
+
+[[entry]]
+id = "R05"
+kind = "requirement"
+ltl = 'G((timer60_ends & !stop) -> X(!VALVE_0 & !VALVE_1 & !MIXER & TIMER_120))'
+cstr = ["VALVE_0", "VALVE_1", "MIXER", "TIMER_120"]
+description = "After mixing, stop the mixer and start the 120 s timer"
+
+[[entry]]
+id = "R06"
+kind = "requirement"
+ltl = 'G((timer60_ends & !stop) -> X(VALVE_2 W (timer120_ends | stop)))'
+cstr = ["VALVE_2"]
+description = "After mixing, drain until the 120 s timer ends or stop"
+
+[[entry]]
+id = "R07"
+kind = "requirement"
+ltl = 'G(timer120_ends -> X(!VALVE_0 & !VALVE_1 & !VALVE_2 & !MIXER))'
+cstr = ["VALVE_0", "VALVE_1", "VALVE_2", "MIXER"]
+description = "After draining, everything off"
+
+[[entry]]
+id = "R08"
+kind = "requirement"
+ltl = 'G(stop -> X(!VALVE_0 & !VALVE_1 & !VALVE_2 & !MIXER))'
+cstr = ["VALVE_0", "VALVE_1", "VALVE_2", "MIXER"]
+description = "Emergency stop: everything off"
+
+[[entry]]
+id = "D01"
+kind = "domain"
+ltl = 'G !(level_1_reached & level_2_reached)'
+description = "The liquid cannot reach both levels in the same instant"
+
+[[entry]]
+id = "A01"
+kind = "assumption"
+ltl = 'G(!VALVE_0 -> X !level_1_reached)'
+description = "Level 1 is only reached while liquid 0 is flowing in"
+
+[[entry]]
+id = "A02"
+kind = "assumption"
+ltl = 'G(!VALVE_1 -> X !level_2_reached)'
+description = "Level 2 is only reached while liquid 1 is flowing in"
+
+[[entry]]
+id = "A03"
+kind = "assumption"
+ltl = '(!timer60_ends W TIMER_60) & G(timer60_ends -> X(!timer60_ends W TIMER_60))'
+description = "The 60 s timer only ends after it was started, once per start"
+
+[[entry]]
+id = "A04"
+kind = "assumption"
+ltl = '(!timer120_ends W TIMER_120) & G(timer120_ends -> X(!timer120_ends W TIMER_120))'
+description = "Same for the 120 s timer"
+
+[[entry]]
+id = "A05"
+kind = "assumption"
+ltl = 'G !(start & stop)'
+description = "Start and stop are never pressed together"

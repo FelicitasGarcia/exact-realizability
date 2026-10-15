@@ -1,0 +1,16 @@
+HOA: v1
+name: "(!timer120_ends W TIMER_120) & G(timer120_ends -> X(!timer120_ends W TIMER_120))"
+States: 2
+Start: 0
+AP: 2 "TIMER_120" "timer120_ends"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels state-acc deterministic
+--BODY--
+State: 0 {0}
+[!0&!1 | 0&1] 0
+[0&!1] 1
+State: 1 {0}
+[1] 0
+[!1] 1
+--END--

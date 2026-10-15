@@ -1,0 +1,17 @@
+HOA: v1
+name: "G((timer60_ends & !stop) -> X(VALVE_2 W (timer120_ends | stop)))"
+States: 2
+Start: 0
+AP: 4 "stop" "timer120_ends" "timer60_ends" "VALVE_2"
+acc-name: Buchi
+Acceptance: 1 Inf(0)
+properties: trans-labels explicit-labels state-acc deterministic
+controllable-AP: 3
+--BODY--
+State: 0 {0}
+[!2 | 0] 0
+[!0&2] 1
+State: 1 {0}
+[0 | 1&!2] 0
+[!0&!1&3 | !0&1&2] 1
+--END--

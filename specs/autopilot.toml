@@ -1,0 +1,65 @@
+name = "Autopilot (FRET)"
+# The autopilot state is an enumerated variable, encoded as one proposition per mode (upper case,
+# controlled). Every requirement constrains the whole variable, so cstr lists all four.
+
+[[entry]]
+id = "R02"
+kind = "requirement"
+ltl = 'G(AP_TRANSITION & standby -> X AP_STANDBY)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "TRANSITION to STANDBY when the pilot is in control"
+
+[[entry]]
+id = "R03"
+kind = "requirement"
+ltl = 'G(AP_TRANSITION & supported & good -> X AP_NOMINAL)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "TRANSITION to NOMINAL when supported and sensor data good"
+
+[[entry]]
+id = "R04"
+kind = "requirement"
+ltl = 'G(AP_NOMINAL & !good -> X AP_MANEUVER)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "NOMINAL to MANEUVER when sensor data not good"
+
+[[entry]]
+id = "R05"
+kind = "requirement"
+ltl = 'G(AP_NOMINAL & standby -> X AP_STANDBY)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "NOMINAL to STANDBY when the pilot is in control"
+
+[[entry]]
+id = "R06"
+kind = "requirement"
+ltl = 'G(AP_MANEUVER & standby & good -> X AP_STANDBY)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "MANEUVER to STANDBY when the pilot is in control and data good"
+
+[[entry]]
+id = "R07"
+kind = "requirement"
+ltl = 'G(AP_MANEUVER & supported & good -> X AP_TRANSITION)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "MANEUVER to TRANSITION when supported and data good"
+
+[[entry]]
+id = "R08"
+kind = "requirement"
+ltl = 'G(AP_STANDBY & !standby -> X AP_TRANSITION)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "STANDBY to TRANSITION when the pilot is not in control"
+
+[[entry]]
+id = "R09"
+kind = "requirement"
+ltl = 'G(AP_STANDBY & apfail -> X AP_MANEUVER)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "STANDBY to MANEUVER on autopilot failure"
+
+[[entry]]
+id = "D1"
+kind = "domain"
+ltl = 'G((AP_TRANSITION | AP_NOMINAL | AP_STANDBY | AP_MANEUVER) & !(AP_TRANSITION & AP_NOMINAL) & !(AP_TRANSITION & AP_STANDBY) & !(AP_TRANSITION & AP_MANEUVER) & !(AP_NOMINAL & AP_STANDBY) & !(AP_NOMINAL & AP_MANEUVER) & !(AP_STANDBY & AP_MANEUVER))'
+description = "The autopilot is in exactly one mode"

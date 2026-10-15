@@ -1,0 +1,16 @@
+name = "Patient monitoring"
+# The operators of the original slide did not render; read here as X (next).
+
+[[entry]]
+id = "G1"
+kind = "requirement"
+ltl = 'G(criticalCondition -> X NURSE_ALERTED)'
+cstr = ["NURSE_ALERTED"]
+description = "Alert the nurse after a critical condition"
+
+[[entry]]
+id = "G2"
+kind = "requirement"
+ltl = 'G(NURSE_ALERTED -> X DOOR_RED_LIGHT_ON)'
+cstr = ["DOOR_RED_LIGHT_ON"]
+description = "Turn the door light red after alerting the nurse"
