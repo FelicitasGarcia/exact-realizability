@@ -1,0 +1,23 @@
+name = "Autopilot (FRET)"
+# The autopilot state is an enumerated variable, encoded as one proposition per mode (upper case,
+# controlled). Every requirement constrains the whole variable, so cstr lists all four.
+
+[[entry]]
+id = "R02"
+kind = "requirement"
+ltl = 'G(AP_TRANSITION & standby -> X AP_STANDBY)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "TRANSITION to STANDBY when the pilot is in control"
+
+[[entry]]
+id = "R03"
+kind = "requirement"
+ltl = 'G(AP_TRANSITION & supported & good -> X AP_NOMINAL)'
+cstr = ["AP_TRANSITION", "AP_NOMINAL", "AP_STANDBY", "AP_MANEUVER"]
+description = "TRANSITION to NOMINAL when supported and sensor data good"
+
+[[entry]]
+id = "D1"
+kind = "domain"
+ltl = 'G((AP_TRANSITION | AP_NOMINAL | AP_STANDBY | AP_MANEUVER) & !(AP_TRANSITION & AP_NOMINAL) & !(AP_TRANSITION & AP_STANDBY) & !(AP_TRANSITION & AP_MANEUVER) & !(AP_NOMINAL & AP_STANDBY) & !(AP_NOMINAL & AP_MANEUVER) & !(AP_STANDBY & AP_MANEUVER))'
+description = "The autopilot is in exactly one mode"

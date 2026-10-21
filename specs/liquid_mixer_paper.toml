@@ -1,0 +1,110 @@
+name = "Liquid mixer (EARS-CTRL)"
+# Requirements Req1-Req12 of Fig. 4 in "Just Formal Enough? Automated Analysis of EARS Requirements"
+# (Lucio, Rahman, Cheng, Mavin). Translated by hand to LTL.
+#
+# Conventions
+# - Inputs (sensors, lower case): start, stop (= emergency button), level_1_reached, level_2_reached,
+#   timer60_ends, timer120_ends.
+# - Outputs (actuators, upper case): VALVE_0/1/2 (true = open, false = close, from the glossary relation
+#   "open = not close"), MIXER (true = start, false = stop, "start = not stop"), TIMER_60, TIMER_120 (true = start).
+# - Next-step response: a trigger at step t demands the response at step t+1 (X). The controller commits its
+#   outputs before it sees that step's inputs, so a same-step response to an input would not be realizable.
+# - "While A, when B, ... shall C until D"  =>  G((A & B) -> X(C W (D | !A)))   (W = weak until).
+#
+# This is the UNREALIZABLE set of Fig. 4 (R1 and R9 conflict when start and stop are pressed together).
+# A1 (start and stop never together) is not in the paper: it is an assumption, so it only counts with
+# `exactreal check ... --with-assumptions`, as a diagnostic of which conflicts it would hide.
+# For the fixed set of Fig. 5, replace R1 by:
+#   ltl = 'G((!level_1_reached & start) -> X(VALVE_0 W (stop | level_1_reached)))'
+
+[[entry]]
+id = "R1"
+kind = "requirement"
+ltl = 'G((!level_1_reached & start) -> X VALVE_0)'
+cstr = ["VALVE_0"]
+description = "While not liquid level 1 is reached, when start button is pressed, open valve 0"
+
+[[entry]]
+id = "R2"
+kind = "requirement"
+ltl = 'G(level_1_reached -> X !VALVE_0)'
+cstr = ["VALVE_0"]
+description = "When liquid level 1 is reached, close valve 0"
+
+[[entry]]
+id = "R3"
+kind = "requirement"
+ltl = 'G((!level_2_reached & level_1_reached) -> X(VALVE_1 W (stop | level_2_reached)))'
+cstr = ["VALVE_1"]
+description = "While not liquid level 2 is reached, when liquid level 1 is reached, open valve 1 until emergency button is pressed"
+
+[[entry]]
+id = "R4"
+kind = "requirement"
+ltl = 'G(level_2_reached -> X !VALVE_1)'
+cstr = ["VALVE_1"]
+description = "When liquid level 2 is reached, close valve 1"
+
+[[entry]]
+id = "R5"
+kind = "requirement"
+ltl = 'G(level_2_reached -> X TIMER_60)'
+cstr = ["TIMER_60"]
+description = "When liquid level 2 is reached, the 60 sec timer shall start"
+
+[[entry]]
+id = "R6"
+kind = "requirement"
+ltl = 'G(level_2_reached -> X(MIXER W (timer60_ends | stop)))'
+cstr = ["MIXER"]
+description = "When liquid level 2 is reached, start the stirring motor until the 60 second timer expires or the emergency button is pressed"
+
+[[entry]]
+id = "R7"
+kind = "requirement"
+ltl = 'G(timer60_ends -> X TIMER_120)'
+cstr = ["TIMER_120"]
+description = "When the 60 second timer expires, the 120 sec timer shall start"
+
+[[entry]]
+id = "R8"
+kind = "requirement"
+ltl = 'G(timer60_ends -> X(VALVE_2 W (timer120_ends | stop)))'
+cstr = ["VALVE_2"]
+description = "When the 60 second timer expires, open valve 2 until the 120 second timer expires or the emergency button is pressed"
+
+[[entry]]
+id = "R9"
+kind = "requirement"
+ltl = 'G(stop -> X !VALVE_0)'
+cstr = ["VALVE_0"]
+description = "When the emergency button is pressed, close valve 0"
+
+[[entry]]
+id = "R10"
+kind = "requirement"
+ltl = 'G(stop -> X !VALVE_1)'
+cstr = ["VALVE_1"]
+description = "When the emergency button is pressed, close valve 1"
+
+[[entry]]
+id = "R11"
+kind = "requirement"
+ltl = 'G(stop -> X !VALVE_2)'
+cstr = ["VALVE_2"]
+description = "When the emergency button is pressed, close valve 2"
+
+[[entry]]
+id = "R12"
+kind = "requirement"
+ltl = 'G(stop -> X !MIXER)'
+cstr = ["MIXER"]
+description = "When the emergency button is pressed, stop the stirring motor"
+
+# Not part of the paper. An assumption (not a domain property), so it is only used with --with-assumptions.
+
+[[entry]]
+id = "A1"
+kind = "assumption"
+ltl = 'G !(start & stop)'
+description = "Start and stop are never pressed together"

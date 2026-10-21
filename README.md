@@ -1,14 +1,16 @@
 # exactreal
 
 Checks whether a set of safety goals is **standardly** or **exactly** realizable within a domain theory, and finds the
-**minimal conflicts** between goals. You write a specification as LTL formulas, Spot turns each formula into an
-automaton (HOA), and the checker works on those automata.
+**minimal unrealizable sets** of goals, each with its conflict-inducing condition. You write a specification as LTL
+formulas, Spot turns each formula into an automaton (HOA), and the checker works on those automata.
 
 - **Standard realizability:** some controller satisfies the goals. It may be more restrictive than they are, for
   example by never entering a state.
 - **Exact realizability:** some input-enabled controller has exactly the traces of the goals. It cannot avoid anything
   they allow.
-- **Conflict:** a set of goals that is not realizable together, while every strict subset is.
+- **Minimal unrealizable set:** a set of goals that is not realizable together, while every strict subset is. The goals
+  are not inconsistent (they can be satisfied together). The environment can create a **conflict-inducing condition**,
+  a situation in which no output satisfies all of them. The checker reports it as a witness.
 
 ## Setup
 
@@ -30,11 +32,13 @@ translate formulas, but you can check `.hoa` files, including the reference ones
 
 ```bash
 exactreal check specs/mine_pump.toml
-exactreal check specs/liquid_mixer.toml --semantics mealy --notion exact
-exactreal check specs/liquid_mixer.toml --goals R01,R08        # one set of goals, with the witness
-exactreal check specs/liquid_mixer.toml --with-assumptions     # which conflicts the assumptions would hide
+exactreal check specs/liquid_mixer.toml --notion exact
+exactreal check specs/liquid_mixer.toml --goals R01,R08        # one set of goals, with its condition
+exactreal check specs/liquid_mixer.toml --with-assumptions     # which unrealizable sets the assumptions would hide
 exactreal hoa specs/liquid_mixer.toml --out build/liquid_mixer # save the automata Spot produces
 ```
+
+The output is colored when it goes to a terminal. Use `--no-color` (or set `NO_COLOR`) to turn the colors off.
 
 `exactreal check` translates the formulas with Spot if it is installed. Otherwise it needs `--hoa-dir` with one
 `<id>.hoa` file per entry:
@@ -85,7 +89,7 @@ What each kind does:
   input chosen by the environment.
 - **Domain properties** (`domain`) form the domain theory. They restrict which inputs can happen.
 - **Domain assumptions** (`assumption`) are *not* part of the domain theory, because they can fail and would hide
-  conflicts. Pass `--with-assumptions` to add them anyway and see which conflicts they hide.
+  unrealizable sets. Pass `--with-assumptions` to add them anyway and see which ones they hide.
 
 Conventions:
 
@@ -94,29 +98,25 @@ Conventions:
 - If a variable with several values is encoded as several propositions (as with the autopilot modes), list all of
   them in `cstr`.
 
-## Timing semantics
+## What a step means
 
-Every check runs under one or both semantics (`--semantics moore|mealy|both`):
-
-| Value | Meaning |
-|---|---|
-| `moore` | At each step the controller commits its outputs before it sees that step's inputs. |
-| `mealy` | The controller sees the step's inputs first, then picks its outputs (GR(1)/Spectra style). |
-
-They give different results. For example, autopilot R02/R03 is an exact conflict only under Moore.
+At each step the controller commits its outputs before it sees that step's inputs. A set of goals is exactly
+realizable when every reachable state of the product automaton is input-enabled: for every output the controller may
+choose, every input the domain allows is accepted. For example, autopilot R02/R03 is an exact conflict.
 
 ## Examples
 
 | Spec | What it shows |
 |---|---|
-| `specs/mine_pump.toml` | The classic R1/R2 conflict. The domain property removes R1/R3. The assumption `¬methane` would hide R1/R2. |
-| `specs/autopilot.toml` | Standard + Mealy gives Spectra's 8 cores of size 5. Exact + Moore gives the 4 binary conflicts. |
+| `specs/mine_pump.toml` | R1 and R2 are not realizable together (condition: `highWater ∧ methane`). The domain property removes R1/R3. The assumption `¬methane` would hide R1/R2. |
+| `specs/mine_pump_fixed.toml` | The mine pump with a methane extractor. R2 lets the pump run when the extractor is on, and R4 turns the extractor on after methane. R1/R2 are now realizable together. |
+| `specs/autopilot.toml` | Exact gives the 4 binary conflicts (R02/R03, R04/R05, R06/R07, R08/R09). Standard gives 21 sets of size 5. |
 | `specs/liquid_mixer.toml` | Based on the liquid mixer of NASA's FRET report (NASA/TM-2021-20210013008). |
-| `specs/patient_monitoring.toml` | No conflict: the controller can always avoid the boundary condition. |
+| `specs/patient_monitoring.toml` | No unrealizable set: the controller can always avoid the boundary condition. |
 
 `examples/hoa/` holds reference automata for every entry, so the examples run without Spot. **They were generated
-with an earlier reference implementation, not with Spot.** `tests/test_spot.py` checks that Spot's automata give the
-same conflicts.
+with an earlier reference implementation, not with Spot.** The ones for `mine_pump_fixed` were written by hand. `tests/test_spot.py` checks that Spot's automata give the
+same unrealizable sets.
 
 ## Project layout
 
@@ -142,8 +142,8 @@ from exactreal import load_spec, build_automata, goals_and_domain, check, minima
 spec = load_spec('specs/mine_pump.toml')
 automata, where = build_automata(spec)                 # Spot, or hoa_dir=... for files
 goals, dom = goals_and_domain(spec, automata)
-print(check(goals[:2], dom, 'moore'))
-print(minimal_conflicts(goals, dom, 'exact', 'moore'))  # [['R1', 'R2']]
+print(check(goals[:2], dom))
+print(minimal_conflicts(goals, dom, 'exact'))  # [['R1', 'R2']]
 ```
 
 The full interface is in [docs/api.md](docs/api.md).
@@ -156,7 +156,8 @@ The full interface is in [docs/api.md](docs/api.md).
    conjunction has no infinite continuation.
 3. **Exact check.** Every reachable state must be input-enabled for the inputs the domain allows.
 4. **Standard check.** A safety game: the greatest fixpoint of winning states.
-5. **Minimal conflicts.** Every subset of the goals is checked, from smallest to largest. This means 2ⁿ − 1 checks,
+5. **Minimal unrealizable sets** (`minimal_conflicts`). Every subset of the goals is checked, from smallest to
+   largest. This means 2ⁿ − 1 checks,
    which is fine up to about 12–15 requirements.
 
 ## Limitations

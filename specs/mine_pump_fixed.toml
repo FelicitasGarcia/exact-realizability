@@ -1,0 +1,47 @@
+name = "Mine pump (with methane extractor)"
+# Fixed version of mine_pump.toml. In mine_pump.toml, R1 and R2 are not realizable together: when high water and
+# methane are detected in the same step, R1 wants the pump on and R2 wants it off.
+# The fix adds an actuator, EXTRACTOR, that removes the methane:
+#   - R4: after methane the extractor is on;
+#   - R2 now allows the pump to run when the extractor is on.
+# Inputs (environment) in lower case, outputs (controller) in upper case.
+
+[[entry]]
+id = "R1"
+kind = "requirement"
+ltl = 'G(highWater -> X PUMP)'
+cstr = ["PUMP"]
+description = "Pump on after high water"
+
+[[entry]]
+id = "R2"
+kind = "requirement"
+ltl = 'G(methane -> X(EXTRACTOR | !PUMP))'
+cstr = ["PUMP", "EXTRACTOR"]
+description = "Pump off after methane, unless the extractor is on"
+
+[[entry]]
+id = "R3"
+kind = "requirement"
+ltl = 'G(lowWater -> X !PUMP)'
+cstr = ["PUMP"]
+description = "Pump off after low water"
+
+[[entry]]
+id = "R4"
+kind = "requirement"
+ltl = 'G(methane -> X EXTRACTOR)'
+cstr = ["EXTRACTOR"]
+description = "Extractor on after methane"
+
+[[entry]]
+id = "D1"
+kind = "domain"
+ltl = 'G !(highWater & lowWater)'
+description = "The water cannot be high and low at the same time"
+
+[[entry]]
+id = "A1"
+kind = "assumption"
+ltl = 'G !methane'
+description = "Ventilation keeps methane away (can fail)"

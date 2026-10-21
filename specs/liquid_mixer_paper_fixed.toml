@@ -1,0 +1,101 @@
+name = "Liquid mixer (EARS-CTRL, fixed)"
+# Requirements Req1-Req12 of Fig. 4 in "Just Formal Enough? Automated Analysis of EARS Requirements"
+# (Lucio, Rahman, Cheng, Mavin). Translated by hand to LTL.
+#
+# Conventions
+# - Inputs (sensors, lower case): start, stop (= emergency button), level_1_reached, level_2_reached,
+#   timer60_ends, timer120_ends.
+# - Outputs (actuators, upper case): VALVE_0/1/2 (true = open, false = close, from the glossary relation
+#   "open = not close"), MIXER (true = start, false = stop, "start = not stop"), TIMER_60, TIMER_120 (true = start).
+# - Next-step response: a trigger at step t demands the response at step t+1 (X). The controller commits its
+#   outputs before it sees that step's inputs, so a same-step response to an input would not be realizable.
+# - Fixed set. Same as Fig. 4 (weak-untils kept), except that the triggers of R1, R3, R6 and R8 add `& !stop`:
+#   when the emergency button is pressed at the same step, the response is not demanded (it would contradict
+#   R9-R12). This is NOT in the paper.
+#   A weak-until whose release is an input is never exactly realizable (the controller commits its outputs before
+#   it sees that input), so R1, R3, R6 and R8 are expected to be only standard-realizable.
+# The original, unrealizable set of Fig. 4 is in liquid_mixer_paper.toml.
+
+[[entry]]
+id = "R1"
+kind = "requirement"
+ltl = 'G((!level_1_reached & start & !stop) -> X(VALVE_0 W (stop | level_1_reached)))'
+cstr = ["VALVE_0"]
+description = "While not liquid level 1 is reached, when start button is pressed (and the emergency button is not), open valve 0 until emergency button is pressed"
+
+[[entry]]
+id = "R2"
+kind = "requirement"
+ltl = 'G(level_1_reached -> X !VALVE_0)'
+cstr = ["VALVE_0"]
+description = "When liquid level 1 is reached, close valve 0"
+
+[[entry]]
+id = "R3"
+kind = "requirement"
+ltl = 'G((!level_2_reached & level_1_reached & !stop) -> X(VALVE_1 W (stop | level_2_reached)))'
+cstr = ["VALVE_1"]
+description = "While not liquid level 2 is reached, when liquid level 1 is reached (and the emergency button is not pressed), open valve 1 until emergency button is pressed"
+
+[[entry]]
+id = "R4"
+kind = "requirement"
+ltl = 'G(level_2_reached -> X !VALVE_1)'
+cstr = ["VALVE_1"]
+description = "When liquid level 2 is reached, close valve 1"
+
+[[entry]]
+id = "R5"
+kind = "requirement"
+ltl = 'G(level_2_reached -> X TIMER_60)'
+cstr = ["TIMER_60"]
+description = "When liquid level 2 is reached, the 60 sec timer shall start"
+
+[[entry]]
+id = "R6"
+kind = "requirement"
+ltl = 'G((level_2_reached & !stop) -> X(MIXER W (timer60_ends | stop)))'
+cstr = ["MIXER"]
+description = "When liquid level 2 is reached (and the emergency button is not pressed), start the stirring motor until the 60 second timer expires or the emergency button is pressed"
+
+[[entry]]
+id = "R7"
+kind = "requirement"
+ltl = 'G(timer60_ends -> X TIMER_120)'
+cstr = ["TIMER_120"]
+description = "When the 60 second timer expires, the 120 sec timer shall start"
+
+[[entry]]
+id = "R8"
+kind = "requirement"
+ltl = 'G((timer60_ends & !stop) -> X(VALVE_2 W (timer120_ends | stop)))'
+cstr = ["VALVE_2"]
+description = "When the 60 second timer expires (and the emergency button is not pressed), open valve 2 until the 120 second timer expires or the emergency button is pressed"
+
+[[entry]]
+id = "R9"
+kind = "requirement"
+ltl = 'G(stop -> X !VALVE_0)'
+cstr = ["VALVE_0"]
+description = "When the emergency button is pressed, close valve 0"
+
+[[entry]]
+id = "R10"
+kind = "requirement"
+ltl = 'G(stop -> X !VALVE_1)'
+cstr = ["VALVE_1"]
+description = "When the emergency button is pressed, close valve 1"
+
+[[entry]]
+id = "R11"
+kind = "requirement"
+ltl = 'G(stop -> X !VALVE_2)'
+cstr = ["VALVE_2"]
+description = "When the emergency button is pressed, close valve 2"
+
+[[entry]]
+id = "R12"
+kind = "requirement"
+ltl = 'G(stop -> X !MIXER)'
+cstr = ["MIXER"]
+description = "When the emergency button is pressed, stop the stirring motor"

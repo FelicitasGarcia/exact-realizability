@@ -81,7 +81,7 @@ def build_automata(spec, hoa_dir=None, source='auto'):
 
 def goals_and_domain(spec, automata, with_assumptions=False):
     """Goals (requirements) and the domain theory. Assumptions are left out of the domain unless
-    with_assumptions=True, which is only a diagnostic: it shows which conflicts they would hide."""
+    with_assumptions=True, which is only a diagnostic: it shows which unrealizable sets of goals they would hide."""
     goals = [goal(e.id, automata[e.id], e.cstr) for e in spec.of_kind(*GOAL_KINDS)]
     kinds = ('domain', 'assumption') if with_assumptions else ('domain',)
     dom = [automata[e.id] for e in spec.of_kind(*kinds)]

@@ -1,19 +1,79 @@
 """Command line: generate the automata of a spec and check it.
 
     exactreal hoa   SPEC [--out DIR]
-    exactreal check SPEC [--hoa-dir DIR] [--source auto|spot|files]
-                         [--semantics moore|mealy|both] [--notion exact|standard|both]
-                         [--with-assumptions] [--goals R01,R08]
+    exactreal check SPEC [--hoa-dir DIR] [--source auto|spot|files] [--notion exact|standard|both]
+                         [--with-assumptions] [--goals R01,R08] [--no-witness] [--no-color]
 """
 import argparse
+import os
+import re
 import sys
 from pathlib import Path
 
 from .realizability import check, minimal_conflicts
-from .spec import GOAL_KINDS, build_automata, goals_and_domain, load_spec
+from .spec import build_automata, goals_and_domain, load_spec
 from .translate import SpotNotFound, ltl_to_hoa, spot_backend, with_controllable
 
+# ----------------------------------------------------------------------------
+# Colors (plain ANSI, no dependencies). Off when piped, with NO_COLOR, or --no-color.
+# ----------------------------------------------------------------------------
+_CODES = {'bold': '1', 'dim': '2', 'red': '31', 'green': '32', 'yellow': '33',
+          'blue': '34', 'magenta': '35', 'cyan': '36'}
+_color = False
 
+
+def _use_color(stream, disabled=False):
+    return not disabled and 'NO_COLOR' not in os.environ and hasattr(stream, 'isatty') and stream.isatty()
+
+
+def paint(text, *styles):
+    if not _color or not styles:
+        return str(text)
+    return '\033[' + ';'.join(_CODES[s] for s in styles) + 'm' + str(text) + '\033[0m'
+
+
+def yes_no(value, width=0):
+    if value:
+        return paint('✔ yes'.ljust(width), 'green', 'bold')
+    return paint('✘ NO'.ljust(width), 'red', 'bold')
+
+
+def heading(text):
+    return paint(f'\n▌ {text}', 'bold', 'blue')
+
+
+def field(label, value):
+    return f'  {paint(f"{label:<10}", "dim")} {value}'
+
+
+def witness_lines(text):
+    """Color a witness (conflict-inducing condition): steps dim, env cyan, actor yellow, reason red."""
+    out = []
+    for line in text.splitlines():
+        if line.lstrip().startswith('then '):
+            line = paint(line, 'red')
+        else:
+            line = re.sub(r'step \d+:', lambda m: paint(m.group(), 'dim'), line)
+            line = re.sub(r'env \{[^}]*\}', lambda m: paint(m.group(), 'cyan'), line)
+            line = re.sub(r'actor \{[^}]*\}', lambda m: paint(m.group(), 'yellow'), line)
+        out.append('  ' + line)
+    return '\n'.join(out)
+
+
+def show_result(r):
+    print(paint(f'Goals {", ".join(g.name for g in r.goals) or "(no goals)"}', 'bold'))
+    print(field('inputs', paint(', '.join(r.inputs) or '-', 'cyan')) + paint('   (environment)', 'dim'))
+    print(field('outputs', paint(', '.join(r.outputs) or '-', 'yellow')) + paint('   (actor)', 'dim'))
+    print(field('standard', yes_no(r.standard)))
+    print(field('exact', yes_no(r.exact)))
+    if r.witness:
+        print(paint('\n  conflict-inducing condition:', 'bold'))
+        print(witness_lines(r.witness))
+
+
+# ----------------------------------------------------------------------------
+# Commands
+# ----------------------------------------------------------------------------
 def _both(value, options):
     return list(options) if value == 'both' else [value]
 
@@ -26,11 +86,11 @@ def cmd_hoa(args):
     out.mkdir(parents=True, exist_ok=True)
     for e in spec.entries:
         if e.hoa:
-            print(f'{e.id}: uses {e.hoa}, skipped')
+            print(f'{paint(e.id, "bold")}: uses {e.hoa}, {paint("skipped", "yellow")}')
             continue
         text = with_controllable(ltl_to_hoa(e.ltl), e.cstr) if e.cstr else ltl_to_hoa(e.ltl)
         (out / f'{e.id}.hoa').write_text(text)
-        print(f'{e.id}: {out / (e.id + ".hoa")}')
+        print(f'{paint(e.id, "bold", "green")}: {paint(out / (e.id + ".hoa"), "dim")}')
 
 
 def cmd_check(args):
@@ -38,16 +98,15 @@ def cmd_check(args):
     automata, where = build_automata(spec, args.hoa_dir, args.source)
     goals, dom = goals_and_domain(spec, automata, args.with_assumptions)
     dom_ids = [e.id for e in spec.of_kind('domain', *(('assumption',) if args.with_assumptions else ()))]
-    print(f'# {spec.name}')
-    print(f'automata: {where}')
-    print(f'goals   : {", ".join(g.name for g in goals)}')
-    print(f'domain  : {", ".join(dom_ids) or "(none)"}')
+    print(paint(f'═══ {spec.name} ═══', 'bold', 'magenta'))
+    print(field('automata', where))
+    print(field('goals', paint(', '.join(g.name for g in goals), 'bold')))
+    print(field('domain', ', '.join(dom_ids) or paint('(none)', 'dim')))
     left_out = [e.id for e in spec.of_kind('assumption')] if not args.with_assumptions else []
     if left_out:
-        print(f'assumptions left out of the domain: {", ".join(left_out)}')
+        print(field('left out', paint(f'assumptions {", ".join(left_out)} are not in the domain', 'dim')))
     if args.with_assumptions:
-        print('NOTE: assumptions are treated as domain properties (diagnostic only)')
-    sems = _both(args.semantics, ('mealy', 'moore'))
+        print(paint('  NOTE: assumptions are treated as domain properties (diagnostic only)', 'yellow'))
     notions = _both(args.notion, ('standard', 'exact'))
 
     if args.goals:
@@ -56,32 +115,39 @@ def cmd_check(args):
         missing = set(names) - {g.name for g in chosen}
         if missing:
             sys.exit(f'unknown goals: {", ".join(sorted(missing))}')
-        for sem in sems:
-            print()
-            print(check(chosen, dom, sem))
+        print()
+        show_result(check(chosen, dom))
         return
 
-    print('\n## Each goal alone')
+    print(heading('Realizable on its own?'))
+    width = max(len(g.name) for g in goals)
+    print('  ' + ' ' * width + '   ' + '   '.join(paint(f'{n:<8}', 'dim') for n in notions))
     for g in goals:
-        cells = [f'{n} {s}: {"yes" if getattr(check([g], dom, s), n) else "NO"}'
-                 for n in notions for s in sems]
-        print(f'  {g.name:6} ' + '   '.join(cells))
+        r = check([g], dom)
+        cells = [yes_no(getattr(r, n), 8) for n in notions]
+        print(f'  {paint(f"{g.name:<{width}}", "bold")}   ' + '   '.join(cells))
 
+    by_name = {g.name: g for g in goals}
     for notion in notions:
-        for sem in sems:
-            cs = minimal_conflicts(goals, dom, notion, sem)
-            print(f'\n## Minimal conflicts: {notion}, {sem}  ({len(cs)})')
-            by_name = {g.name: g for g in goals}
-            for c in cs:
-                print('  - ' + ', '.join(c))
-                if args.witness:
-                    r = check([by_name[n] for n in c], dom, sem)
-                    if notion == 'exact' and r.witness:
-                        print('\n'.join('  ' + line for line in r.witness.splitlines()))
+        cs = minimal_conflicts(goals, dom, notion)
+        count = paint(len(cs), 'red' if cs else 'green', 'bold')
+        print(heading(f'Minimal unrealizable sets: {notion}') + f'  ({count})')
+        if not cs:
+            print(paint('  ✔ none', 'green'))
+        for c in cs:
+            print('  ' + paint('✘ ' + ' ∧ '.join(c), 'red', 'bold') + paint('   not realizable' + ('' if len(c) == 1 else ' together'), 'dim'))
+            if args.witness and notion == 'exact':
+                r = check([by_name[n] for n in c], dom)
+                if r.witness:
+                    print(paint('    conflict-inducing condition:', 'dim'))
+                    print(witness_lines(r.witness))
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog='exactreal', description='Exact and standard realizability of safety goals.')
+    global _color
+    p = argparse.ArgumentParser(prog='exactreal',
+                                description='Exact and standard realizability of safety goals.')
+    p.add_argument('--no-color', action='store_true', help='turn colors off')
     sub = p.add_subparsers(dest='cmd', required=True)
 
     h = sub.add_parser('hoa', help='translate the LTL formulas of a spec into .hoa files with Spot')
@@ -89,27 +155,29 @@ def main(argv=None):
     h.add_argument('--out', help='output folder (default: build/<spec name>)')
     h.set_defaults(func=cmd_hoa)
 
-    c = sub.add_parser('check', help='check realizability and find minimal conflicts')
+    c = sub.add_parser('check', help='check realizability and find minimal sets of goals that are not realizable together')
     c.add_argument('spec')
     c.add_argument('--hoa-dir', help='folder with <id>.hoa files (used when Spot is not installed)')
     c.add_argument('--source', choices=['auto', 'spot', 'files'], default='auto')
-    c.add_argument('--semantics', choices=['moore', 'mealy', 'both'], default='both')
     c.add_argument('--notion', choices=['exact', 'standard', 'both'], default='both')
     c.add_argument('--with-assumptions', action='store_true',
                    help='treat assumptions as domain properties (diagnostic)')
-    c.add_argument('--goals', help='check only these goals together, e.g. R01,R08 (prints the witness)')
+    c.add_argument('--goals', help='check only these goals together, e.g. R01,R08 (prints the conflict-inducing condition)')
     c.add_argument('--no-witness', dest='witness', action='store_false',
-                   help='do not print why each exact conflict is not realizable')
+                   help='do not print the conflict-inducing condition of each exact set')
+    for sp in (h, c):      # also accepted after the command; SUPPRESS keeps the global value
+        sp.add_argument('--no-color', action='store_true', default=argparse.SUPPRESS, help='turn colors off')
     c.set_defaults(func=cmd_check)
 
     args = p.parse_args(argv)
+    _color = _use_color(sys.stdout, args.no_color)
     try:
         args.func(args)
     except (ValueError, SyntaxError, FileNotFoundError, SpotNotFound) as e:
         hint = ''
         if 'Spot is not installed' in str(e) and args.cmd == 'check':
             hint = '\nhint: use --hoa-dir, e.g. --hoa-dir examples/hoa/' + Path(args.spec).stem
-        sys.exit(f'error: {e}{hint}')
+        sys.exit(f'{paint("error:", "red", "bold")} {e}{hint}')
 
 
 if __name__ == '__main__':

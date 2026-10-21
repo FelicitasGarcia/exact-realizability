@@ -8,12 +8,11 @@ pytestmark = pytest.mark.skipif(spot_backend() is None, reason='Spot is not inst
 
 
 @pytest.mark.parametrize('name', ['mine_pump', 'patient_monitoring', 'autopilot', 'liquid_mixer'])
-@pytest.mark.parametrize('semantics', ['moore', 'mealy'])
-def test_spot_matches_reference(name, semantics):
+def test_spot_matches_reference(name):
     spec = load_spec(ROOT / 'specs' / f'{name}.toml')
     automata, _ = build_automata(spec, source='spot')
     goals, dom = goals_and_domain(spec, automata)
     ref_goals, ref_dom = spec_goals(name)
     for notion in ('exact', 'standard'):
-        assert (minimal_conflicts(goals, dom, notion, semantics)
-                == minimal_conflicts(ref_goals, ref_dom, notion, semantics))
+        assert (minimal_conflicts(goals, dom, notion)
+                == minimal_conflicts(ref_goals, ref_dom, notion))

@@ -1,14 +1,16 @@
 # Python interface
 
 Checks whether a set of safety goals, given as automata in HOA format, is **standardly** or **exactly** realizable
-within a domain theory, and finds the **minimal conflicts** between goals. Pure Python (3.9+), no dependencies.
+within a domain theory, and finds the **minimal unrealizable sets** of goals. Pure Python (3.9+), no dependencies.
 Everything below is importable from `exactreal`. For specs, Spot and the command line, see the [README](../README.md).
 
 - **Standard realizability:** some controller satisfies the goals. It may be more restrictive than they are, for
   example by never entering a state.
 - **Exact realizability:** some input-enabled controller has exactly the traces of the goals. It cannot avoid anything
   they allow.
-- **Conflict:** a set of goals that is not realizable together, while every strict subset is.
+- **Minimal unrealizable set:** a set of goals that is not realizable together, while every strict subset is. The goals
+  are not inconsistent (they can be satisfied together). The environment can create a **conflict-inducing condition**,
+  a situation in which no output satisfies all of them. The checker reports it as a witness.
 
 ## Input
 
@@ -32,7 +34,7 @@ hoa = spot.translate('G(highWater -> X pump)', 'Buchi', 'deterministic', 'state-
 ```
 
 Domain properties are automata too. Only domain properties belong in the domain theory, never assumptions:
-assumptions can fail, and including them would hide conflicts.
+assumptions can fail, and including them would hide unrealizable sets.
 
 ## Inputs and outputs
 
@@ -43,16 +45,11 @@ If a variable with several values is encoded as several propositions (for exampl
 `ap_NOMINAL`, …), list **all** of them in `cstr`, even the ones a single goal does not mention. Otherwise the missing
 ones become inputs.
 
-## Timing semantics
+## What a step means
 
-Every check takes a `semantics` parameter:
-
-| Value | Meaning |
-|---|---|
-| `'moore'` (default) | At each step the actor commits its outputs before it sees that step's inputs. |
-| `'mealy'` | The actor sees the step's inputs first, then picks its outputs. This is GR(1)/Spectra style. |
-
-The choice changes the results. For example, autopilot R02 ∧ R03 is an exact conflict only under Moore.
+At each step the actor commits its outputs before it sees that step's inputs. A set of goals is exactly realizable
+when every reachable state of the product automaton is input-enabled: for every output the actor may choose, every
+input the domain allows is accepted. For example, autopilot R02 ∧ R03 is an exact conflict.
 
 ## Interface
 
@@ -74,7 +71,7 @@ R02 = goal('R02', hoa_text, ['ap_TRANSITION', 'ap_NOMINAL', 'ap_STANDBY', 'ap_MA
 `Goal` is a frozen dataclass with fields `name`, `hoa` and `cstr` (a `frozenset`). Printing a goal shows its number of
 states, its propositions and its `cstr`.
 
-### `check(goals, dom=(), semantics='moore') -> Result`
+### `check(goals, dom=()) -> Result`
 
 Checks standard and exact realizability of a set of goals.
 
@@ -82,12 +79,11 @@ Checks standard and exact realizability of a set of goals.
 |---|---|---|
 | `goals` | list of `Goal` | The goals to check together. |
 | `dom` | list of `str` | Domain properties, as HOA texts or `.hoa` paths. |
-| `semantics` | `'moore'` or `'mealy'` | See [Timing semantics](#timing-semantics). |
 
 ```python
 r = check([R1, R2], ['dom.hoa'])
 r.exact      # False
-print(r)     # full report, with the conflict-inducing situation
+print(r)     # full report, with the conflict-inducing condition
 ```
 
 ### `Result`
@@ -99,43 +95,41 @@ What `check` returns.
 | `goals` | list of `Goal` | The goals that were checked. |
 | `inputs` | list of `str` | Propositions treated as inputs. |
 | `outputs` | list of `str` | Propositions controlled by the actor. |
-| `semantics` | `str` | `'moore'` or `'mealy'`. |
 | `standard` | `bool` | Standardly realizable. |
 | `exact` | `bool` | Exactly realizable. |
-| `witness` | `str` | Empty if exactly realizable. Otherwise, the steps that lead to a state that is not input-enabled, followed by the output and input that cannot be handled. |
+| `witness` | `str` | Empty if exactly realizable. Otherwise the **conflict-inducing condition**: the steps that lead to a state that is not input-enabled, followed by the output the actor may choose and the input that would then violate the goals. |
 
-Example witness for the mine pump under Moore:
+Example witness for the mine pump:
 
 ```
 at the initial step
-then the actor may output {!pump}, but env {highWater, !lowWater, methane} would violate the goals
+then the actor may output {!PUMP}, but env {highWater, !lowWater, methane} would violate the goals
 ```
 
-### `check_hoa(hoa, outputs=None, dom=(), semantics='moore', name='automaton') -> Result`
+### `check_hoa(hoa, outputs=None, dom=(), name='automaton') -> Result`
 
-Shortcut for checking a single automaton: `check([goal(name, hoa, outputs)], dom, semantics)`.
+Shortcut for checking a single automaton: `check([goal(name, hoa, outputs)], dom)`.
 
 ```python
 print(check_hoa('pump.hoa', outputs='pump'))
 ```
 
-### `minimal_conflicts(goals, dom=(), notion='exact', semantics='moore') -> list[list[str]]`
+### `minimal_conflicts(goals, dom=(), notion='exact') -> list[list[str]]`
 
-Finds all minimal conflicts: sets of goals that are not realizable together, while every strict subset is.
+Finds all minimal unrealizable sets: sets of goals that are not realizable together, while every strict subset is. (The function keeps the name `minimal_conflicts`.)
 
 | Parameter | Type | Description |
 |---|---|---|
 | `goals` | list of `Goal` | The specification. |
 | `dom` | list of `str` | Domain properties, as HOA texts or paths. |
-| `notion` | `'exact'` or `'standard'` | Which realizability defines a conflict. |
-| `semantics` | `'moore'` or `'mealy'` | See [Timing semantics](#timing-semantics). |
+| `notion` | `'exact'` or `'standard'` | Which realizability defines "unrealizable". |
 
-Returns the conflicts as lists of goal names, smallest first. It checks every subset, so with *n* goals it runs
+Returns the sets as lists of goal names, smallest first. It checks every subset, so with *n* goals it runs
 2ⁿ − 1 checks. This is fine up to about 12–15 goals.
 
 ```python
-minimal_conflicts(AUTOPILOT, DOM, 'exact', 'moore')
-# [['R02', 'R03'], ['R04', 'R05'], ['R06', 'R07'], ['R08', 'R09']]
+minimal_conflicts(MINE_PUMP, DOM, 'exact')
+# [['R1', 'R2']]
 ```
 
 ### `to_hoa(goals, dom=(), name=None) -> str`
@@ -158,9 +152,8 @@ outputs. You can use it to save a conjunction or to look at it in Spot.
 1. **Product.** The checker builds the product of the goal and domain automata over every valuation of the inputs
    and outputs. It then removes the states from which the conjunction has no infinite continuation: each automaton on
    its own always has one, but two automata may not share any.
-2. **Exact check.** Every reachable state of the product must be input-enabled.
-   - Under Moore: for every output the actor may choose, every input the domain allows must be accepted.
-   - Under Mealy: for every input the domain allows, some output must be accepted.
+2. **Exact check.** Every reachable state of the product must be input-enabled: for every output the actor may
+   choose, every input the domain allows must be accepted.
 3. **Standard check.** A safety game: the greatest fixpoint of states from which the actor can always stay inside the
    product. The goals are realizable if the initial state is winning.
 
