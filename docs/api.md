@@ -47,9 +47,22 @@ ones become inputs.
 
 ## What a step means
 
-At each step the actor commits its outputs before it sees that step's inputs. A set of goals is exactly realizable
-when every reachable state of the product automaton is input-enabled: for every output the actor may choose, every
-input the domain allows is accepted. For example, autopilot R02 ∧ R03 is an exact conflict.
+There are two ways to read a step. Pick one with the `semantics` parameter (`--semantics` on the command line). The default is `moore`.
+
+- **Moore** (`moore`): the actor commits its outputs before it sees that step's inputs.
+- **Mealy** (`mealy`): the actor sees that step's inputs and then chooses its outputs.
+
+Each step changes both checks. The conditions apply to every reachable state of the product automaton, and "every
+input" means every input the domain allows:
+
+| Check | Moore | Mealy |
+|---|---|---|
+| Exact (input-enabled) | every output the goals allow for some input is allowed for every input | every input has some output the goals allow |
+| Standard (safety game) | some output keeps the run safe for every input | every input has an output that keeps the run safe |
+
+Mealy is the weaker reading: whatever is realizable with Moore steps is also realizable with Mealy steps. For example,
+autopilot R02/R03 is an exact conflict with Moore steps, but not with Mealy steps. Both conditions follow the note
+*Checking Exact Realizability of LTL Specifications* (Section 2 for Mealy, Section 5 for Moore).
 
 ## Interface
 
@@ -71,7 +84,7 @@ R02 = goal('R02', hoa_text, ['ap_TRANSITION', 'ap_NOMINAL', 'ap_STANDBY', 'ap_MA
 `Goal` is a frozen dataclass with fields `name`, `hoa` and `cstr` (a `frozenset`). Printing a goal shows its number of
 states, its propositions and its `cstr`.
 
-### `check(goals, dom=()) -> Result`
+### `check(goals, dom=(), semantics='moore') -> Result`
 
 Checks standard and exact realizability of a set of goals.
 
@@ -79,6 +92,7 @@ Checks standard and exact realizability of a set of goals.
 |---|---|---|
 | `goals` | list of `Goal` | The goals to check together. |
 | `dom` | list of `str` | Domain properties, as HOA texts or `.hoa` paths. |
+| `semantics` | `'moore'` or `'mealy'` | When the actor chooses its outputs. See [What a step means](#what-a-step-means). `SEMANTICS` lists both. |
 
 ```python
 r = check([R1, R2], ['dom.hoa'])
@@ -97,7 +111,8 @@ What `check` returns.
 | `outputs` | list of `str` | Propositions controlled by the actor. |
 | `standard` | `bool` | Standardly realizable. |
 | `exact` | `bool` | Exactly realizable. |
-| `witness` | `str` | Empty if exactly realizable. Otherwise the **conflict-inducing condition**: the steps that lead to a state that is not input-enabled, followed by the output the actor may choose and the input that would then violate the goals. |
+| `witness` | `str` | Empty if exactly realizable. Otherwise the **conflict-inducing condition**: the steps that lead to a state that is not input-enabled, then, with Moore steps, the output the actor may choose and the input that would then violate the goals, or, with Mealy steps, the input that no output can answer. |
+| `semantics` | `str` | `'moore'` or `'mealy'`. |
 
 Example witness for the mine pump:
 
@@ -106,15 +121,15 @@ at the initial step
 then the actor may output {!PUMP}, but env {highWater, !lowWater, methane} would violate the goals
 ```
 
-### `check_hoa(hoa, outputs=None, dom=(), name='automaton') -> Result`
+### `check_hoa(hoa, outputs=None, dom=(), name='automaton', semantics='moore') -> Result`
 
-Shortcut for checking a single automaton: `check([goal(name, hoa, outputs)], dom)`.
+Shortcut for checking a single automaton: `check([goal(name, hoa, outputs)], dom, semantics)`.
 
 ```python
 print(check_hoa('pump.hoa', outputs='pump'))
 ```
 
-### `minimal_conflicts(goals, dom=(), notion='exact') -> list[list[str]]`
+### `minimal_conflicts(goals, dom=(), notion='exact', semantics='moore') -> list[list[str]]`
 
 Finds all minimal unrealizable sets: sets of goals that are not realizable together, while every strict subset is. (The function keeps the name `minimal_conflicts`.)
 
@@ -123,6 +138,7 @@ Finds all minimal unrealizable sets: sets of goals that are not realizable toget
 | `goals` | list of `Goal` | The specification. |
 | `dom` | list of `str` | Domain properties, as HOA texts or paths. |
 | `notion` | `'exact'` or `'standard'` | Which realizability defines "unrealizable". |
+| `semantics` | `'moore'` or `'mealy'` | When the actor chooses its outputs. |
 
 Returns the sets as lists of goal names, smallest first. It checks every subset, so with *n* goals it runs
 2ⁿ − 1 checks. This is fine up to about 12–15 goals.
@@ -152,10 +168,12 @@ outputs. You can use it to save a conjunction or to look at it in Spot.
 1. **Product.** The checker builds the product of the goal and domain automata over every valuation of the inputs
    and outputs. It then removes the states from which the conjunction has no infinite continuation: each automaton on
    its own always has one, but two automata may not share any.
-2. **Exact check.** Every reachable state of the product must be input-enabled: for every output the actor may
-   choose, every input the domain allows must be accepted.
+2. **Exact check.** Every reachable state of the product must be input-enabled. With Moore steps: for every output
+   the actor may choose, every input the domain allows must be accepted. With Mealy steps: every input the domain
+   allows must have some output that is accepted.
 3. **Standard check.** A safety game: the greatest fixpoint of states from which the actor can always stay inside the
-   product. The goals are realizable if the initial state is winning.
+   product. With Moore steps a state is winning if some output is safe for every input; with Mealy steps, if every
+   input has a safe output. The goals are realizable if the initial state is winning.
 
 Inputs that the domain rules out are never required. That is how domain properties make goals realizable, for example
 `¬(highWater ∧ lowWater)` for R1 and R3 in the mine pump.

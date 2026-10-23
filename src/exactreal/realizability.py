@@ -79,10 +79,11 @@ class Result:
     standard: bool
     exact: bool
     witness: str = ''
+    semantics: str = 'moore'
 
     def __repr__(self):
         names = ', '.join(g.name for g in self.goals) or '(no goals)'
-        lines = [f'Goals {names}',
+        lines = [f'Goals {names}  ({self.semantics} steps)',
                  f'  inputs  (env)  : {self.inputs}',
                  f'  outputs (actor): {self.outputs}',
                  f'  standard realizable: {self.standard}',
@@ -92,21 +93,26 @@ class Result:
         return '\n'.join(lines)
 
 
-def check(goals, dom=()):
+SEMANTICS = ('moore', 'mealy')
+
+
+def check(goals, dom=(), semantics='moore'):
     """Check standard and exact realizability of a set of goals within a domain theory.
 
-    At each step the actor commits its outputs before it sees that step's inputs.
-
-    goals : list of Goal. The actor controls the union of their Cstr; everything else is input.
-    dom   : list of HOA automata (text or paths) for the domain properties. Never assumptions.
+    goals     : list of Goal. The actor controls the union of their Cstr; everything else is input.
+    dom       : list of HOA automata (text or paths) for the domain properties. Never assumptions.
+    semantics : 'moore', the actor commits its outputs before it sees that step's inputs;
+                'mealy', the actor sees that step's inputs before it chooses its outputs.
     """
+    if semantics not in SEMANTICS:
+        raise ValueError(f"semantics must be 'moore' or 'mealy', not {semantics!r}")
     da = [load(d) for d in dom]
     ga = [load(g.hoa) for g in goals]
     vocab = set().union(*(a.aps for a in da + ga))
     outputs = sorted(set().union(*(g.cstr for g in goals)) & vocab) if goals else []
     inputs = sorted(vocab - set(outputs))
     IV, OV = valuations(inputs), valuations(outputs)
-    res = Result(list(goals), inputs, outputs, False, False)
+    res = Result(list(goals), inputs, outputs, False, False, semantics=semantics)
 
     D = _explore(da, IV, OV)
     A = _explore(da + ga, IV, OV)
@@ -133,18 +139,30 @@ def check(goals, dom=()):
         return '\n'.join(f'    step {n}: env {_fmt(i, inputs)}  actor {_fmt(o, outputs)}'
                          for n, (i, o) in enumerate(steps))
 
+    def inputs_of(q):          # inputs the domain allows, with some output
+        return [i for i in IV if any(okD(q, i, o) for o in OV)]
+
     # Exact: every reachable state is input-enabled.
     for q in order:
-        for o in OV:
-            allowed = {i for i in IV if (i, o) in sA[q]}
-            if not allowed:
-                continue
-            missing = {i for i in IV if okD(q, i, o)} - allowed
+        if semantics == 'moore':
+            # Every output the goals allow for some input must be allowed for every input.
+            for o in OV:
+                allowed = {i for i in IV if (i, o) in sA[q]}
+                if not allowed:
+                    continue
+                missing = {i for i in IV if okD(q, i, o)} - allowed
+                if missing:
+                    bad = sorted(missing, key=sorted)[0]
+                    res.witness = (prefix(q) + f'\n    then the actor may output {_fmt(o, outputs)},'
+                                   f' but env {_fmt(bad, inputs)} would violate the goals')
+                    break
+        else:
+            # Every input must have some output the goals allow.
+            missing = [i for i in inputs_of(q) if not any((i, o) in sA[q] for o in OV)]
             if missing:
                 bad = sorted(missing, key=sorted)[0]
-                res.witness = (prefix(q) + f'\n    then the actor may output {_fmt(o, outputs)},'
-                               f' but env {_fmt(bad, inputs)} would violate the goals')
-                break
+                res.witness = (prefix(q) + f'\n    then env {_fmt(bad, inputs)},'
+                               f' and no output of the actor satisfies the goals')
         if res.witness:
             break
     res.exact = not res.witness
@@ -157,8 +175,11 @@ def check(goals, dom=()):
             def good(i, o):
                 return (i, o) in sA[q] and sA[q][(i, o)] in win
 
-            ok = any(any(okD(q, i, o) for i in IV) and
-                     all(good(i, o) for i in IV if okD(q, i, o)) for o in OV)
+            if semantics == 'moore':   # some output is safe for every input
+                ok = any(any(okD(q, i, o) for i in IV) and
+                         all(good(i, o) for i in IV if okD(q, i, o)) for o in OV)
+            else:                      # every input has a safe output
+                ok = all(any(good(i, o) for o in OV) for i in inputs_of(q))
             if not ok:
                 win.discard(q)
                 changed = True
@@ -166,12 +187,12 @@ def check(goals, dom=()):
     return res
 
 
-def check_hoa(hoa, outputs=None, dom=(), name='automaton'):
+def check_hoa(hoa, outputs=None, dom=(), name='automaton', semantics='moore'):
     """Check one automaton (HOA text or .hoa path). outputs default to its controllable-AP header."""
-    return check([goal(name, hoa, outputs)], dom)
+    return check([goal(name, hoa, outputs)], dom, semantics)
 
 
-def minimal_conflicts(goals, dom=(), notion='exact'):
+def minimal_conflicts(goals, dom=(), notion='exact', semantics='moore'):
     """All minimal sets of goals that are not realizable together (every strict subset is).
 
     Such goals are not inconsistent: they can be satisfied together, but the environment can create a
@@ -182,7 +203,7 @@ def minimal_conflicts(goals, dom=(), notion='exact'):
     for k in range(1, len(goals) + 1):
         for combo in combinations(goals, k):
             s = frozenset(combo)
-            r = check(list(combo), dom)
+            r = check(list(combo), dom, semantics)
             realizable[s] = r.exact if notion == 'exact' else r.standard
             all_sub_ok[s] = all(realizable[s - {g}] and all_sub_ok[s - {g}] for g in s)
             if not realizable[s] and all_sub_ok[s]:

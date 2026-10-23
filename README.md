@@ -33,6 +33,7 @@ translate formulas, but you can check `.hoa` files, including the reference ones
 ```bash
 exactreal check specs/mine_pump.toml
 exactreal check specs/liquid_mixer.toml --notion exact
+exactreal check specs/autopilot.toml --semantics both          # Moore and Mealy steps
 exactreal check specs/liquid_mixer.toml --goals R01,R08        # one set of goals, with its condition
 exactreal check specs/liquid_mixer.toml --with-assumptions     # which unrealizable sets the assumptions would hide
 exactreal hoa specs/liquid_mixer.toml --out build/liquid_mixer # save the automata Spot produces
@@ -100,9 +101,22 @@ Conventions:
 
 ## What a step means
 
-At each step the controller commits its outputs before it sees that step's inputs. A set of goals is exactly
-realizable when every reachable state of the product automaton is input-enabled: for every output the controller may
-choose, every input the domain allows is accepted. For example, autopilot R02/R03 is an exact conflict.
+There are two ways to read a step. Pick one with `--semantics` (`check(..., semantics=...)`). The default is `moore`.
+
+- **Moore** (`moore`): the controller commits its outputs before it sees that step's inputs.
+- **Mealy** (`mealy`): the controller sees that step's inputs and then chooses its outputs.
+
+Each step changes both checks. The conditions apply to every reachable state of the product automaton, and "every
+input" means every input the domain allows:
+
+| Check | Moore | Mealy |
+|---|---|---|
+| Exact (input-enabled) | every output the goals allow for some input is allowed for every input | every input has some output the goals allow |
+| Standard (safety game) | some output keeps the run safe for every input | every input has an output that keeps the run safe |
+
+Mealy is the weaker reading: whatever is realizable with Moore steps is also realizable with Mealy steps. For example,
+autopilot R02/R03 is an exact conflict with Moore steps, but not with Mealy steps. Both conditions follow the note
+*Checking Exact Realizability of LTL Specifications* (Section 2 for Mealy, Section 5 for Moore).
 
 ## Examples
 
@@ -110,7 +124,7 @@ choose, every input the domain allows is accepted. For example, autopilot R02/R0
 |---|---|
 | `specs/mine_pump.toml` | R1 and R2 are not realizable together (condition: `highWater ∧ methane`). The domain property removes R1/R3. The assumption `¬methane` would hide R1/R2. |
 | `specs/mine_pump_fixed.toml` | The mine pump with a methane extractor. R2 lets the pump run when the extractor is on, and R4 turns the extractor on after methane. R1/R2 are now realizable together. |
-| `specs/autopilot.toml` | Exact gives the 4 binary conflicts (R02/R03, R04/R05, R06/R07, R08/R09). Standard gives 21 sets of size 5. |
+| `specs/autopilot.toml` | With Moore steps, exact gives the 4 binary conflicts (R02/R03, R04/R05, R06/R07, R08/R09) and standard gives 21 sets of size 5. With Mealy steps, both give 8 sets (exact of size 3, standard of size 5). |
 | `specs/liquid_mixer.toml` | Based on the liquid mixer of NASA's FRET report (NASA/TM-2021-20210013008). |
 | `specs/patient_monitoring.toml` | No unrealizable set: the controller can always avoid the boundary condition. |
 
@@ -154,8 +168,9 @@ The full interface is in [docs/api.md](docs/api.md).
    automaton whose states are all accepting. Only syntactic safety formulas are accepted.
 2. **Product.** The checker builds the product of the goal and domain automata. It removes the states from which the
    conjunction has no infinite continuation.
-3. **Exact check.** Every reachable state must be input-enabled for the inputs the domain allows.
-4. **Standard check.** A safety game: the greatest fixpoint of winning states.
+3. **Exact check.** Every reachable state must be input-enabled for the inputs the domain allows, with the Moore or
+   Mealy condition (see [What a step means](#what-a-step-means)).
+4. **Standard check.** A safety game: the greatest fixpoint of winning states, with Moore or Mealy steps.
 5. **Minimal unrealizable sets** (`minimal_conflicts`). Every subset of the goals is checked, from smallest to
    largest. This means 2ⁿ − 1 checks,
    which is fine up to about 12–15 requirements.

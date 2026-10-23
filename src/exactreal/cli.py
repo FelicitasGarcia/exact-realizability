@@ -2,7 +2,7 @@
 
     exactreal hoa   SPEC [--out DIR]
     exactreal check SPEC [--hoa-dir DIR] [--source auto|spot|files] [--notion exact|standard|both]
-                         [--with-assumptions] [--goals R01,R08] [--no-witness] [--no-color]
+                         [--semantics moore|mealy|both] [--with-assumptions] [--goals R01,R08] [--no-witness] [--no-color]
 """
 import argparse
 import os
@@ -10,7 +10,7 @@ import re
 import sys
 from pathlib import Path
 
-from .realizability import check, minimal_conflicts
+from .realizability import SEMANTICS, check, minimal_conflicts
 from .spec import build_automata, goals_and_domain, load_spec
 from .translate import SpotNotFound, ltl_to_hoa, spot_backend, with_controllable
 
@@ -61,7 +61,8 @@ def witness_lines(text):
 
 
 def show_result(r):
-    print(paint(f'Goals {", ".join(g.name for g in r.goals) or "(no goals)"}', 'bold'))
+    print(paint(f'Goals {", ".join(g.name for g in r.goals) or "(no goals)"}', 'bold')
+          + paint(f'   ({r.semantics} steps)', 'dim'))
     print(field('inputs', paint(', '.join(r.inputs) or '-', 'cyan')) + paint('   (environment)', 'dim'))
     print(field('outputs', paint(', '.join(r.outputs) or '-', 'yellow')) + paint('   (actor)', 'dim'))
     print(field('standard', yes_no(r.standard)))
@@ -108,6 +109,8 @@ def cmd_check(args):
     if args.with_assumptions:
         print(paint('  NOTE: assumptions are treated as domain properties (diagnostic only)', 'yellow'))
     notions = _both(args.notion, ('standard', 'exact'))
+    semantics = _both(args.semantics, SEMANTICS)
+    print(field('steps', ', '.join(semantics)) + paint('   (moore: outputs before inputs, mealy: inputs first)', 'dim'))
 
     if args.goals:
         names = [n.strip() for n in args.goals.split(',')]
@@ -115,32 +118,37 @@ def cmd_check(args):
         missing = set(names) - {g.name for g in chosen}
         if missing:
             sys.exit(f'unknown goals: {", ".join(sorted(missing))}')
-        print()
-        show_result(check(chosen, dom))
+        for sem in semantics:
+            print()
+            show_result(check(chosen, dom, sem))
         return
 
+    columns = [(n, sem) for sem in semantics for n in notions]
+    label = (lambda n, sem: f'{n}/{sem}') if len(semantics) > 1 else (lambda n, sem: n)
+    cw = max(8, *(len(label(n, sem)) for n, sem in columns))
     print(heading('Realizable on its own?'))
     width = max(len(g.name) for g in goals)
-    print('  ' + ' ' * width + '   ' + '   '.join(paint(f'{n:<8}', 'dim') for n in notions))
+    print('  ' + ' ' * width + '   ' + '   '.join(paint(f'{label(n, sem):<{cw}}', 'dim') for n, sem in columns))
     for g in goals:
-        r = check([g], dom)
-        cells = [yes_no(getattr(r, n), 8) for n in notions]
+        rs = {sem: check([g], dom, sem) for sem in semantics}
+        cells = [yes_no(getattr(rs[sem], n), cw) for n, sem in columns]
         print(f'  {paint(f"{g.name:<{width}}", "bold")}   ' + '   '.join(cells))
 
     by_name = {g.name: g for g in goals}
-    for notion in notions:
-        cs = minimal_conflicts(goals, dom, notion)
-        count = paint(len(cs), 'red' if cs else 'green', 'bold')
-        print(heading(f'Minimal unrealizable sets: {notion}') + f'  ({count})')
-        if not cs:
-            print(paint('  ✔ none', 'green'))
-        for c in cs:
-            print('  ' + paint('✘ ' + ' ∧ '.join(c), 'red', 'bold') + paint('   not realizable' + ('' if len(c) == 1 else ' together'), 'dim'))
-            if args.witness and notion == 'exact':
-                r = check([by_name[n] for n in c], dom)
-                if r.witness:
-                    print(paint('    conflict-inducing condition:', 'dim'))
-                    print(witness_lines(r.witness))
+    for sem in semantics:
+        for notion in notions:
+            cs = minimal_conflicts(goals, dom, notion, sem)
+            count = paint(len(cs), 'red' if cs else 'green', 'bold')
+            print(heading(f'Minimal unrealizable sets: {notion}, {sem} steps') + f'  ({count})')
+            if not cs:
+                print(paint('  ✔ none', 'green'))
+            for c in cs:
+                print('  ' + paint('✘ ' + ' ∧ '.join(c), 'red', 'bold') + paint('   not realizable' + ('' if len(c) == 1 else ' together'), 'dim'))
+                if args.witness and notion == 'exact':
+                    r = check([by_name[n] for n in c], dom, sem)
+                    if r.witness:
+                        print(paint('    conflict-inducing condition:', 'dim'))
+                        print(witness_lines(r.witness))
 
 
 def main(argv=None):
@@ -160,6 +168,9 @@ def main(argv=None):
     c.add_argument('--hoa-dir', help='folder with <id>.hoa files (used when Spot is not installed)')
     c.add_argument('--source', choices=['auto', 'spot', 'files'], default='auto')
     c.add_argument('--notion', choices=['exact', 'standard', 'both'], default='both')
+    c.add_argument('--semantics', choices=['moore', 'mealy', 'both'], default='moore',
+                   help='moore: the actor commits its outputs before it sees the inputs (default); '
+                        'mealy: it sees the inputs first')
     c.add_argument('--with-assumptions', action='store_true',
                    help='treat assumptions as domain properties (diagnostic)')
     c.add_argument('--goals', help='check only these goals together, e.g. R01,R08 (prints the conflict-inducing condition)')
